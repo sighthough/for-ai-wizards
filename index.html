@@ -1,0 +1,815 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GPU Neural Net - Activity-Dependent Structural Plasticity</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+        }
+        body {
+            background-color: #08090c;
+            color: #e0e6ed;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+        #sidebar {
+            width: 320px;
+            background: #11141a;
+            border-right: 1px solid #1f2633;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            overflow-y: auto;
+            z-index: 10;
+        }
+        h1 {
+            font-size: 1.05rem;
+            color: #58a6ff;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+        }
+        p.subtitle {
+            font-size: 0.78rem;
+            color: #8b949e;
+            margin-top: -8px;
+            line-height: 1.3;
+        }
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        label {
+            font-size: 0.82rem;
+            color: #c9d1d9;
+            display: flex;
+            justify-content: space-between;
+        }
+        label span.val {
+            color: #58a6ff;
+            font-family: monospace;
+        }
+        input[type="range"] {
+            width: 100%;
+            accent-color: #1f6feb;
+            cursor: pointer;
+        }
+        .btn-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+        button {
+            background: #1a202c;
+            color: #c9d1d9;
+            border: 1px solid #2d3748;
+            padding: 8px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            font-weight: 500;
+            transition: all 0.15s ease;
+        }
+        button:hover {
+            background: #2d3748;
+            border-color: #4a5568;
+            color: #fff;
+        }
+        button.primary {
+            background: #238636;
+            border-color: #2ea043;
+            color: #fff;
+        }
+        button.primary:hover {
+            background: #2ea043;
+        }
+        button.preset {
+            background: #1f6feb;
+            border-color: #388bfd;
+            color: #fff;
+        }
+        button.preset:hover {
+            background: #388bfd;
+        }
+        button.accent {
+            background: #8957e5;
+            border-color: #a371f7;
+            color: #fff;
+        }
+        button.accent:hover {
+            background: #9e6aed;
+        }
+        button.danger {
+            background: #da3633;
+            border-color: #f85149;
+            color: #fff;
+        }
+        button.active-toggle {
+            border-color: #58a6ff;
+            color: #58a6ff;
+            background: #111927;
+        }
+        .stats-panel {
+            background: #090b0e;
+            border: 1px solid #1a202c;
+            border-radius: 6px;
+            padding: 10px;
+            font-family: monospace;
+            font-size: 0.76rem;
+            color: #8b949e;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        .stats-panel span {
+            color: #58a6ff;
+        }
+        .layer-legend {
+            display: flex;
+            gap: 4px;
+            margin-top: 2px;
+        }
+        .layer-box {
+            flex: 1;
+            height: 16px;
+            border-radius: 3px;
+            font-size: 0.65rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #000;
+            font-weight: bold;
+        }
+        #canvas-container {
+            flex: 1;
+            position: relative;
+            background: #050608;
+        }
+        canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+        .instructions {
+            position: absolute;
+            bottom: 15px;
+            left: 15px;
+            background: rgba(17, 20, 26, 0.85);
+            backdrop-filter: blur(4px);
+            border: 1px solid #1f2633;
+            padding: 10px 14px;
+            border-radius: 6px;
+            font-size: 0.78rem;
+            color: #8b949e;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="sidebar">
+        <div>
+            <h1>GPU Neural Network</h1>
+            <p class="subtitle">Structural Plasticity & Activity Pull</p>
+        </div>
+
+        <div class="stats-panel">
+            <div>GPU Neurons: <span id="stat-count">0</span></div>
+            <div>Active Synapses: <span id="stat-synapses">0</span></div>
+            <div>Active Signals: <span id="stat-pulses">0</span></div>
+            <div>Render Engine: <span style="color:#39d353">WebGL2 GPU</span></div>
+        </div>
+
+        <button class="preset" onclick="loadPlasticityPreset()">🧲 Preset: Self-Clustering Plasticity</button>
+
+        <div class="control-group">
+            <label>Dynamic Layer Colors</label>
+            <div class="layer-legend">
+                <div class="layer-box" style="background:#38bdf8">L0</div>
+                <div class="layer-box" style="background:#4ade80">L1</div>
+                <div class="layer-box" style="background:#facc15">L2</div>
+                <div class="layer-box" style="background:#fb923c">L3</div>
+                <div class="layer-box" style="background:#c084fc">L4+</div>
+            </div>
+        </div>
+
+        <div class="control-group">
+            <label>Activity Pull Strength <span class="val" id="val-pull">0.85</span></label>
+            <input type="range" id="slider-pull" min="0.0" max="2.5" step="0.05" value="0.85">
+        </div>
+
+        <div class="control-group">
+            <label>Connection Radius <span class="val" id="val-radius">65px</span></label>
+            <input type="range" id="slider-radius" min="30" max="220" value="65">
+        </div>
+
+        <div class="control-group">
+            <label>Refractory Cooldown <span class="val" id="val-cooldown">22 frames</span></label>
+            <input type="range" id="slider-cooldown" min="2" max="45" value="22">
+        </div>
+
+        <div class="control-group">
+            <label>Network Scale <span class="val" id="val-count">900 Nodes</span></label>
+            <input type="range" id="slider-count" min="200" max="3000" step="100" value="900">
+        </div>
+
+        <div class="control-group">
+            <button id="btn-plasticity" class="active-toggle" onclick="togglePlasticity()">Activity Plasticity: ON</button>
+        </div>
+
+        <div class="btn-grid">
+            <button id="btn-grid-layout" onclick="snapToGrid()">📐 Snap to Grid</button>
+            <button id="btn-oscillator" onclick="toggleOscillator()">⏱️ Oscillator: OFF</button>
+        </div>
+
+        <div class="control-group">
+            <button id="btn-physics" onclick="togglePhysics()">Spatial Physics: ON</button>
+        </div>
+
+        <button class="accent" onclick="triggerNeuralWave()">🌊 Trigger Sequential Wave</button>
+
+        <div class="btn-grid">
+            <button class="primary" onclick="stimulateLayer0()">Pulse Layer 0</button>
+            <button class="danger" onclick="calmNetwork()">Calm Network</button>
+        </div>
+    </div>
+
+    <div id="canvas-container">
+        <canvas id="glCanvas"></canvas>
+        <div class="instructions">
+            • <b>Left Click</b> to send shockwaves • Active channels contract together into highways; silent ones drift apart!
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('glCanvas');
+        const gl = canvas.getContext('webgl2');
+
+        if (!gl) alert('WebGL2 is not supported by your browser.');
+
+        // --- STATE CONFIG ---
+        let nodeCount = 900;
+        let connectionRadius = 65;
+        let layerSpacing = 35;
+        let pulseSpeed = 4.2;
+        let refractoryPeriod = 22;
+        let activityPull = 0.85;
+        let plasticityEnabled = true;
+        let physicsEnabled = true;
+        let layerAlignEnabled = false;
+        let oscillatorEnabled = false;
+        let leakRate = 0.035;
+
+        const sliderCount = document.getElementById('slider-count');
+        const sliderRadius = document.getElementById('slider-radius');
+        const sliderCooldown = document.getElementById('slider-cooldown');
+        const sliderPull = document.getElementById('slider-pull');
+
+        sliderCount.addEventListener('change', (e) => {
+            nodeCount = parseInt(e.target.value);
+            document.getElementById('val-count').innerText = nodeCount + ' Nodes';
+            initNetwork();
+        });
+        sliderRadius.addEventListener('input', (e) => {
+            connectionRadius = parseFloat(e.target.value);
+            document.getElementById('val-radius').innerText = connectionRadius + 'px';
+            rebuildSynapses();
+        });
+        sliderCooldown.addEventListener('input', (e) => {
+            refractoryPeriod = parseInt(e.target.value);
+            document.getElementById('val-cooldown').innerText = refractoryPeriod + ' frames';
+        });
+        sliderPull.addEventListener('input', (e) => {
+            activityPull = parseFloat(e.target.value);
+            document.getElementById('val-pull').innerText = activityPull.toFixed(2);
+        });
+
+        function togglePhysics() {
+            physicsEnabled = !physicsEnabled;
+            document.getElementById('btn-physics').innerText = "Spatial Physics: " + (physicsEnabled ? "ON" : "OFF");
+        }
+
+        function togglePlasticity() {
+            plasticityEnabled = !plasticityEnabled;
+            document.getElementById('btn-plasticity').classList.toggle('active-toggle', plasticityEnabled);
+            document.getElementById('btn-plasticity').innerText = "Activity Plasticity: " + (plasticityEnabled ? "ON" : "OFF");
+        }
+
+        function toggleOscillator() {
+            oscillatorEnabled = !oscillatorEnabled;
+            document.getElementById('btn-oscillator').classList.toggle('active-toggle', oscillatorEnabled);
+            document.getElementById('btn-oscillator').innerText = "⏱️ Oscillator: " + (oscillatorEnabled ? "ON" : "OFF");
+        }
+
+        function loadPlasticityPreset() {
+            connectionRadius = 65;
+            refractoryPeriod = 20;
+            activityPull = 1.1;
+            plasticityEnabled = true;
+            physicsEnabled = true;
+
+            sliderRadius.value = 65;
+            sliderCooldown.value = 20;
+            sliderPull.value = 1.1;
+
+            document.getElementById('val-radius').innerText = '65px';
+            document.getElementById('val-cooldown').innerText = '20 frames';
+            document.getElementById('val-pull').innerText = '1.10';
+
+            document.getElementById('btn-plasticity').classList.add('active-toggle');
+            document.getElementById('btn-plasticity').innerText = "Activity Plasticity: ON";
+
+            snapToGrid();
+            triggerNeuralWave();
+        }
+
+        function resizeCanvas() {
+            canvas.width = canvas.parentElement.clientWidth * window.devicePixelRatio;
+            canvas.height = canvas.parentElement.clientHeight * window.devicePixelRatio;
+            gl.viewport(0, 0, canvas.width, canvas.height);
+        }
+        window.addEventListener('resize', resizeCanvas);
+
+        // --- DATA BUFFERS ---
+        let posX, posY, vx, vy, voltage, baseLayer, layer, type, flash, refractoryTimer;
+        let synapses = [];
+        let pulses = [];
+
+        function initNetwork() {
+            posX = new Float32Array(nodeCount);
+            posY = new Float32Array(nodeCount);
+            vx = new Float32Array(nodeCount);
+            vy = new Float32Array(nodeCount);
+            voltage = new Float32Array(nodeCount);
+            baseLayer = new Float32Array(nodeCount);
+            layer = new Float32Array(nodeCount);
+            type = new Float32Array(nodeCount);
+            flash = new Float32Array(nodeCount);
+            refractoryTimer = new Float32Array(nodeCount);
+
+            const w = canvas.parentElement.clientWidth;
+            const h = canvas.parentElement.clientHeight;
+
+            for (let i = 0; i < nodeCount; i++) {
+                let assigned = i % 5;
+                baseLayer[i] = assigned;
+                layer[i] = assigned;
+
+                posX[i] = Math.random() * (w - 80) + 40;
+                posY[i] = Math.random() * (h - 80) + 40;
+                voltage[i] = 0.0;
+                refractoryTimer[i] = 0;
+                type[i] = Math.random() < 0.15 ? 1.0 : 0.0;
+            }
+
+            pulses = [];
+            rebuildSynapses();
+        }
+
+        function snapToGrid() {
+            const w = canvas.parentElement.clientWidth;
+            const h = canvas.parentElement.clientHeight;
+            
+            let cols = Math.ceil(Math.sqrt(nodeCount * (w / h)));
+            let rows = Math.ceil(nodeCount / cols);
+
+            let dx = (w - 80) / cols;
+            let dy = (h - 80) / rows;
+
+            for (let i = 0; i < nodeCount; i++) {
+                let c = i % cols;
+                let r = Math.floor(i / cols);
+                let hexOffset = (r % 2 === 1) ? dx * 0.5 : 0;
+
+                posX[i] = 40 + c * dx + hexOffset;
+                posY[i] = 40 + r * dy;
+                vx[i] = 0;
+                vy[i] = 0;
+            }
+            rebuildSynapses();
+        }
+
+        function rebuildSynapses() {
+            synapses = [];
+            const rSq = connectionRadius * connectionRadius;
+            for (let i = 0; i < nodeCount; i++) {
+                for (let j = i + 1; j < nodeCount; j++) {
+                    let dx = posX[j] - posX[i];
+                    let dy = posY[j] - posY[i];
+                    if (dx * dx + dy * dy <= rSq) {
+                        synapses.push(i, j);
+                    }
+                }
+            }
+            document.getElementById('stat-synapses').innerText = (synapses.length / 2).toLocaleString();
+        }
+
+        // --- SHADERS ---
+        const nodeVS = `#version 300 es
+        in vec2 a_quad;
+        in vec2 a_pos;
+        in float a_voltage;
+        in float a_layer;
+        in float a_type;
+        in float a_flash;
+
+        uniform vec2 u_res;
+
+        out vec2 v_uv;
+        out float v_voltage;
+        out float v_layer;
+        out float v_type;
+        out float v_flash;
+
+        void main() {
+            v_uv = a_quad;
+            v_voltage = a_voltage;
+            v_layer = a_layer;
+            v_type = a_type;
+            v_flash = a_flash;
+
+            float radius = 5.0 + max(0.0, a_voltage) * 3.5 + a_flash * 6.0;
+            vec2 pixelPos = a_pos + a_quad * radius;
+            vec2 clipSpace = (pixelPos / u_res) * 2.0 - 1.0;
+            gl_Position = vec4(clipSpace * vec2(1.0, -1.0), 0.0, 1.0);
+        }`;
+
+        const nodeFS = `#version 300 es
+        precision mediump float;
+
+        in vec2 v_uv;
+        in float v_voltage;
+        in float v_layer;
+        in float v_type;
+        in float v_flash;
+
+        out vec4 fragColor;
+
+        vec3 getLayerColor(float l, float t) {
+            if (t > 0.5) return vec3(0.95, 0.25, 0.45);
+            float modL = mod(l, 5.0);
+            if (modL < 0.5) return vec3(0.22, 0.74, 0.97);
+            if (modL < 1.5) return vec3(0.29, 0.87, 0.50);
+            if (modL < 2.5) return vec3(0.98, 0.80, 0.08);
+            if (modL < 3.5) return vec3(0.98, 0.57, 0.24);
+            return vec3(0.75, 0.52, 0.99);
+        }
+
+        void main() {
+            float dist = length(v_uv);
+            if (dist > 1.0) discard;
+
+            vec3 baseColor = getLayerColor(v_layer, v_type);
+            if (v_voltage > 0.7) {
+                baseColor = mix(baseColor, vec3(1.0), (v_voltage - 0.7) * 3.3);
+            }
+
+            float alpha = smoothstep(1.0, 0.3, dist);
+            float glow = exp(-dist * 2.5) * (0.3 + v_flash * 0.8);
+
+            fragColor = vec4(baseColor + vec3(glow), alpha);
+        }`;
+
+        const edgeVS = `#version 300 es
+        in vec2 a_pos;
+        uniform vec2 u_res;
+
+        void main() {
+            vec2 clipSpace = (a_pos / u_res) * 2.0 - 1.0;
+            gl_Position = vec4(clipSpace * vec2(1.0, -1.0), 0.0, 1.0);
+        }`;
+
+        const edgeFS = `#version 300 es
+        precision mediump float;
+        out vec4 fragColor;
+
+        void main() {
+            fragColor = vec4(0.25, 0.42, 0.65, 0.12);
+        }`;
+
+        function createShader(gl, type, source) {
+            const shader = gl.createShader(type);
+            gl.shaderSource(shader, source);
+            gl.compileShader(shader);
+            if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+                console.error(gl.getShaderInfoLog(shader));
+                gl.deleteShader(shader);
+                return null;
+            }
+            return shader;
+        }
+
+        function createProgram(gl, vs, fs) {
+            const p = gl.createProgram();
+            gl.attachShader(p, createShader(gl, gl.VERTEX_SHADER, vs));
+            gl.attachShader(p, createShader(gl, gl.FRAGMENT_SHADER, fs));
+            gl.linkProgram(p);
+            return p;
+        }
+
+        const nodeProg = createProgram(gl, nodeVS, nodeFS);
+        const edgeProg = createProgram(gl, edgeVS, edgeFS);
+
+        const quadBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, quadBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+            -1, -1,  1, -1, -1,  1,
+            -1,  1,  1, -1,  1,  1
+        ]), gl.STATIC_DRAW);
+
+        const posBuf = gl.createBuffer();
+        const voltBuf = gl.createBuffer();
+        const layerBuf = gl.createBuffer();
+        const typeBuf = gl.createBuffer();
+        const flashBuf = gl.createBuffer();
+        const edgeBuf = gl.createBuffer();
+
+        // --- SIMULATION ENGINE ---
+        let timeStep = 0;
+        let draggedNode = -1;
+
+        function step() {
+            timeStep++;
+            const w = canvas.parentElement.clientWidth;
+            const h = canvas.parentElement.clientHeight;
+
+            if (timeStep % 15 === 0) rebuildSynapses();
+
+            if (oscillatorEnabled && timeStep % 35 === 0) {
+                stimulateLayer0();
+            }
+
+            // 1. Dynamic Layer Relaxation
+            for (let i = 0; i < nodeCount; i++) {
+                layer[i] += (baseLayer[i] - layer[i]) * 0.02;
+            }
+
+            // 2. Spiking & Refractory Cooldown
+            for (let i = 0; i < nodeCount; i++) {
+                if (refractoryTimer[i] > 0) {
+                    refractoryTimer[i]--;
+                    voltage[i] = -0.2;
+                    continue;
+                }
+
+                if (voltage[i] >= 1.0) {
+                    voltage[i] = -0.3;
+                    refractoryTimer[i] = refractoryPeriod;
+                    flash[i] = 1.0;
+                    const srcLayer = layer[i];
+
+                    for (let s = 0; s < synapses.length; s += 2) {
+                        let a = synapses[s];
+                        let b = synapses[s+1];
+                        let target = -1;
+
+                        if (a === i) target = b;
+                        else if (b === i) target = a;
+
+                        if (target !== -1) {
+                            pulses.push({
+                                from: i,
+                                to: target,
+                                srcLayer: srcLayer,
+                                isType: type[i],
+                                progress: 0.0
+                            });
+                        }
+                    }
+                }
+            }
+
+            // 3. Pulse Propagation & ACTIVITY-BASED ATTRACTION
+            for (let p = pulses.length - 1; p >= 0; p--) {
+                let pulse = pulses[p];
+                let dx = posX[pulse.to] - posX[pulse.from];
+                let dy = posY[pulse.to] - posY[pulse.from];
+                let dist = Math.hypot(dx, dy) || 1.0;
+
+                pulse.progress += pulseSpeed / dist;
+
+                if (pulse.progress >= 1.0) {
+                    let target = pulse.to;
+                    let src = pulse.from;
+                    
+                    if (refractoryTimer[target] <= 0) {
+                        let impact = pulse.isType === 1.0 ? -0.7 : 0.32;
+                        voltage[target] += impact;
+
+                        if (pulse.isType === 0.0) {
+                            layer[target] = Math.min(4, pulse.srcLayer + 1);
+                        }
+
+                        // Physical Attraction Nudge: Pull nodes closer on active firing!
+                        if (plasticityEnabled && activityPull > 0) {
+                            let pullForce = activityPull * 0.45;
+                            let fx = (dx / dist) * pullForce;
+                            let fy = (dy / dist) * pullForce;
+
+                            vx[target] -= fx;
+                            vy[target] -= fy;
+                            vx[src] += fx;
+                            vy[src] += fy;
+                        }
+                    }
+
+                    pulses.splice(p, 1);
+                }
+            }
+
+            // 4. Voltage Leak & Flash Decay
+            for (let i = 0; i < nodeCount; i++) {
+                if (refractoryTimer[i] <= 0) {
+                    voltage[i] = Math.max(0.0, voltage[i] - leakRate);
+                }
+                if (flash[i] > 0) flash[i] -= 0.08;
+            }
+
+            // 5. Physics Engine (Repulsion pushes non-interacting nodes wider)
+            if (physicsEnabled) {
+                for (let i = 0; i < nodeCount; i++) {
+                    if (i === draggedNode) continue;
+
+                    for (let j = i + 1; j < nodeCount; j++) {
+                        let dy = posY[j] - posY[i];
+                        let dx = posX[j] - posX[i];
+                        let distSq = dx * dx + dy * dy;
+
+                        // Repulsion radius pushes non-active nodes wider apart
+                        let maxDistSq = Math.max(350, connectionRadius * connectionRadius * 0.45);
+                        if (distSq < maxDistSq) {
+                            let dist = Math.sqrt(distSq) || 0.1;
+                            let force = (Math.sqrt(maxDistSq) - dist) / dist * 0.065;
+                            vy[i] -= dy * force;
+                            vy[j] += dy * force;
+                            vx[i] -= dx * force;
+                            vx[j] += dx * force;
+                        }
+                    }
+
+                    posX[i] += vx[i];
+                    posY[i] += vy[i];
+                    vx[i] *= 0.80;
+                    vy[i] *= 0.80;
+
+                    if (posX[i] < 30) { posX[i] = 30; vx[i] *= -1; }
+                    if (posX[i] > w - 30) { posX[i] = w - 30; vx[i] *= -1; }
+                    if (posY[i] < 30) { posY[i] = 30; vy[i] *= -1; }
+                    if (posY[i] > h - 30) { posY[i] = h - 30; vy[i] *= -1; }
+                }
+            }
+
+            document.getElementById('stat-count').innerText = nodeCount.toLocaleString();
+            document.getElementById('stat-pulses').innerText = pulses.length.toLocaleString();
+        }
+
+        // --- RENDER LOOP ---
+        function render() {
+            step();
+
+            const w = canvas.parentElement.clientWidth;
+            const h = canvas.parentElement.clientHeight;
+
+            gl.clearColor(0.03, 0.04, 0.05, 1.0);
+            gl.clear(gl.COLOR_BUFFER_BIT);
+
+            gl.enable(gl.BLEND);
+            gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
+
+            // 1. Edges
+            gl.useProgram(edgeProg);
+            gl.uniform2f(gl.getUniformLocation(edgeProg, "u_res"), w, h);
+
+            let edgeVertices = new Float32Array(synapses.length * 2);
+            for (let i = 0; i < synapses.length; i++) {
+                let idx = synapses[i];
+                edgeVertices[i * 2] = posX[idx];
+                edgeVertices[i * 2 + 1] = posY[idx];
+            }
+
+            gl.bindBuffer(gl.ARRAY_BUFFER, edgeBuf);
+            gl.bufferData(gl.ARRAY_BUFFER, edgeVertices, gl.DYNAMIC_DRAW);
+
+            let aPosEdge = gl.getAttribLocation(edgeProg, "a_pos");
+            gl.enableVertexAttribArray(aPosEdge);
+            gl.vertexAttribPointer(aPosEdge, 2, gl.FLOAT, false, 0, 0);
+
+            gl.drawArrays(gl.LINES, 0, synapses.length);
+
+            // 2. Nodes
+            gl.useProgram(nodeProg);
+            gl.uniform2f(gl.getUniformLocation(nodeProg, "u_res"), w, h);
+
+            gl.bindBuffer(gl.ARRAY_BUFFER, quadBuffer);
+            let aQuad = gl.getAttribLocation(nodeProg, "a_quad");
+            gl.enableVertexAttribArray(aQuad);
+            gl.vertexAttribPointer(aQuad, 2, gl.FLOAT, false, 0, 0);
+
+            function bindInstanceAttrib(buffer, data, location, size) {
+                gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+                gl.bufferData(gl.ARRAY_BUFFER, data, gl.DYNAMIC_DRAW);
+                gl.enableVertexAttribArray(location);
+                gl.vertexAttribPointer(location, size, gl.FLOAT, false, 0, 0);
+                gl.vertexAttribDivisor(location, 1);
+            }
+
+            let posData = new Float32Array(nodeCount * 2);
+            for (let i = 0; i < nodeCount; i++) {
+                posData[i * 2] = posX[i];
+                posData[i * 2 + 1] = posY[i];
+            }
+
+            bindInstanceAttrib(posBuf, posData, gl.getAttribLocation(nodeProg, "a_pos"), 2);
+            bindInstanceAttrib(voltBuf, voltage, gl.getAttribLocation(nodeProg, "a_voltage"), 1);
+            bindInstanceAttrib(layerBuf, layer, gl.getAttribLocation(nodeProg, "a_layer"), 1);
+            bindInstanceAttrib(typeBuf, type, gl.getAttribLocation(nodeProg, "a_type"), 1);
+            bindInstanceAttrib(flashBuf, flash, gl.getAttribLocation(nodeProg, "a_flash"), 1);
+
+            gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, nodeCount);
+
+            gl.vertexAttribDivisor(gl.getAttribLocation(nodeProg, "a_pos"), 0);
+            gl.vertexAttribDivisor(gl.getAttribLocation(nodeProg, "a_voltage"), 0);
+            gl.vertexAttribDivisor(gl.getAttribLocation(nodeProg, "a_layer"), 0);
+            gl.vertexAttribDivisor(gl.getAttribLocation(nodeProg, "a_type"), 0);
+            gl.vertexAttribDivisor(gl.getAttribLocation(nodeProg, "a_flash"), 0);
+
+            requestAnimationFrame(render);
+        }
+
+        // --- INTERACTION ---
+        function stimulateLayer0() {
+            for (let i = 0; i < nodeCount; i++) {
+                if (baseLayer[i] === 0) {
+                    refractoryTimer[i] = 0;
+                    voltage[i] = 1.3;
+                    flash[i] = 1.0;
+                }
+            }
+        }
+
+        function triggerNeuralWave() {
+            for (let l = 0; l < 5; l++) {
+                setTimeout(() => {
+                    for (let i = 0; i < nodeCount; i++) {
+                        if (baseLayer[i] === l) {
+                            refractoryTimer[i] = 0;
+                            voltage[i] = 1.4;
+                            flash[i] = 1.0;
+                        }
+                    }
+                }, l * 130);
+            }
+        }
+
+        function calmNetwork() {
+            pulses = [];
+            for (let i = 0; i < nodeCount; i++) {
+                voltage[i] = 0.0;
+                flash[i] = 0.0;
+                refractoryTimer[i] = 0;
+            }
+        }
+
+        canvas.addEventListener('mousedown', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const mx = e.clientX - rect.left;
+            const my = e.clientY - rect.top;
+
+            let splashRadius = Math.max(50, connectionRadius * 0.8);
+
+            for (let i = 0; i < nodeCount; i++) {
+                let dist = Math.hypot(posX[i] - mx, posY[i] - my);
+                if (dist <= splashRadius) {
+                    refractoryTimer[i] = 0;
+                    voltage[i] = 1.5;
+                    flash[i] = 1.0;
+                    draggedNode = i;
+                }
+            }
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (draggedNode !== -1) {
+                const rect = canvas.getBoundingClientRect();
+                posX[draggedNode] = e.clientX - rect.left;
+                posY[draggedNode] = e.clientY - rect.top;
+            }
+        });
+
+        window.addEventListener('mouseup', () => { draggedNode = -1; });
+
+        // Launch
+        resizeCanvas();
+        initNetwork();
+        render();
+    </script>
+</body>
+</html>
