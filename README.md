@@ -2,7 +2,7 @@
 # for-ai-wizards
 its a physics based ai neural network concept trying to simulate a human brain
 
-2026 [sighthough](https://youtu.be/UtPiUGwu-0Q)-gemini ai 3.6 thinking
+*Co-authored by [sighthough](https://youtu.be/UtPiUGwu-0Q) and [Googles Gemini](https://www.youtube.com/shorts/R3Qo4rBgrD8).*
 
 play with it  [here](https://sighthough.github.io/for-ai-wizards/)
 
